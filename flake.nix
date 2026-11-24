@@ -1,0 +1,114 @@
+{
+  description = "A Nix-flake-based Python development environment";
+
+  inputs.nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1"; # unstable Nixpkgs
+
+  outputs =
+    { self, ... }@inputs:
+
+    let
+      inherit (inputs.nixpkgs) lib;
+
+      supportedSystems = [
+        "x86_64-linux"
+        "aarch64-linux"
+        "aarch64-darwin"
+      ];
+
+      forEachSupportedSystem =
+        f:
+        lib.genAttrs supportedSystems (
+          system:
+          f {
+            inherit system;
+            pkgs = import inputs.nixpkgs { inherit system; };
+          }
+        );
+
+      /*
+        Change this value ({major}.{min}) to
+        update the Python virtual-environment
+        version. When you do this, make sure
+        to delete the `.venv` directory to
+        have the hook rebuild it for the new
+        version, since it won't overwrite an
+        existing one. After this, reload the
+        development shell to rebuild it.
+        You'll see a warning asking you to
+        do this when version mismatches are
+        present. For safety, removal should
+        be a manual step, even if trivial.
+      */
+      version = "3.13";
+    in
+    {
+      devShells = forEachSupportedSystem (
+        { pkgs, system }:
+        let
+          concatMajorMinor =
+            v:
+            lib.pipe v [
+              lib.versions.splitVersion
+              (lib.sublist 0 2)
+              lib.concatStrings
+            ];
+
+          python = pkgs."python${concatMajorMinor version}";
+
+          rEnv = pkgs.rWrapper.override {
+            packages = with pkgs.rPackages; [
+              ggplot2
+              readxl
+              dplyr
+            ];
+          };
+        in
+        {
+          default = pkgs.mkShellNoCC {
+            venvDir = ".venv";
+
+            postShellHook = ''
+              venvVersionWarn() {
+              	local venvVersion
+              	venvVersion="$("$venvDir/bin/python" -c 'import platform; print(platform.python_version())')"
+
+              	[[ "$venvVersion" == "${python.version}" ]] && return
+
+              	cat <<EOF
+              Warning: Python version mismatch: [$venvVersion (venv)] != [${python.version}]
+                       Delete '$venvDir' and reload to rebuild for version ${python.version}
+              EOF
+              }
+
+              venvVersionWarn
+            '';
+
+            packages =
+              (with python.pkgs; [
+                venvShellHook
+
+                # Python library deps (pandas, openpyxl, python-actr, ...)
+                # are managed via `uv`/pyproject.toml, not nixpkgs.
+                pkgs.uv
+
+                # R has no equivalent to uv/pyproject.toml here, so its
+                # packages (ggplot2, readxl, dplyr) come straight from
+                # nixpkgs' rPackages set instead.
+                rEnv
+
+                # pkgs.black
+                # or
+                # python.pkgs.black
+
+                # pkgs.ruff
+                # or
+                # python.pkgs.ruff
+              ])
+              ++ [ self.formatter.${system} ];
+          };
+        }
+      );
+
+      formatter = forEachSupportedSystem ({ pkgs, ... }: pkgs.nixfmt);
+    };
+}

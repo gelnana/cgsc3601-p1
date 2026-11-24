@@ -1,0 +1,11 @@
+[project]
+name = "cgsc3601-project"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "python-actr",
+    "pandas",
+    "openpyxl",
+    "scikit-learn>=1.9.1",
+    "scipy>=1.18.1",
+]
