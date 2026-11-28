@@ -20,8 +20,9 @@ def _thread(key, candidates, target, calib_frame, holdout_frame):
 
 def _parallel(tasks):
     # delegate each model/participant fit to cores, so this doesn't take >1hr
+    columns = zip(*tasks)
     with ProcessPoolExecutor() as pool:
-        return pool.map(_thread, *zip(*tasks))
+        return pool.map(_thread, *columns)
 
 
 def run(trials, output_path="data/clusters.xlsx", calib_bounds=(1, 241), holdout_bounds=(241, 481)):

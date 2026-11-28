@@ -146,7 +146,7 @@ class Fit:
                         continue
                     
                     # collect valid simulation results for this behavior
-                    values = np.array([getattr(s, stat) for s in samples], dtype=float)
+                    values = np.array([getattr(s, stat) for s in samples])
                     values = values[~np.isnan(values)]
                     
                     # skip if there isn't enough variance in the results to estimate a curve

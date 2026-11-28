@@ -58,7 +58,8 @@ class Transform:
 
     def run(self, trials: Trials) -> pd.DataFrame:
         # extend existing trial column per group then return set
-        keys, frames = zip(*((key, self.builder(group.frame)) for key, group in trials.groups()))
+        built = [(key, self.builder(group.frame)) for key, group in trials.groups()]
+        keys, frames = zip(*built)
         return pd.concat(frames, keys=keys, names=trials.group_keys)
 
 
@@ -101,8 +102,8 @@ class Agreement:
         rows = []
         for cohort, group in matched.groupby("cohort"):
             for stat in self.stats:
-                real = group[f"{stat}_real"].to_numpy(dtype=float)
-                model = group[f"{stat}_model"].to_numpy(dtype=float)
+                real = group[f"{stat}_real"].to_numpy()
+                model = group[f"{stat}_model"].to_numpy()
                 valid = ~np.isnan(real) & ~np.isnan(model)
                 real, model = real[valid], model[valid]
                 diff = model - real
