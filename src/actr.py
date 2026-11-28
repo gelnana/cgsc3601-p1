@@ -170,7 +170,8 @@ class Fit:
     @classmethod
     def select(cls, model_classes, frame: pd.DataFrame, target) -> "Fit":
         # pick candidate model that aligns strongest with participant's calibration
-        return max((cls.search(model_cls, frame, target) for model_cls in model_classes), key=lambda fit: fit.log_lik)
+        fits = [cls.search(model_cls, frame, target) for model_cls in model_classes]
+        return max(fits, key=lambda fit: fit.log_lik)
 
 
 class API(Model):
