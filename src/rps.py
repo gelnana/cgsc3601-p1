@@ -71,9 +71,9 @@ class Dyad:
         return counts / total if total else counts
 
     @property
-    def imitate_rate(self) -> float:
+    def counter_rate(self) -> float:
         rates = self.loss_shift_rates
-        return rates.get("imitate", 0.0) if not rates.empty else np.nan
+        return rates.get("counter", 0.0) if not rates.empty else np.nan
 
     @classmethod
     def log(cls, frame: pd.DataFrame) -> pd.DataFrame:

@@ -1,14 +1,19 @@
+from dataclasses import asdict, dataclass, is_dataclass
 from typing import Callable, Iterable, Iterator
 
 import numpy as np
 import pandas as pd
+import pingouin as pg
 
 
+@dataclass
 class Trials:
-    def __init__(self, frame: pd.DataFrame, group_keys: Iterable[str], time_key: str):
-        self.frame = frame
-        self.group_keys = list(group_keys)
-        self.time_key = time_key
+    frame: pd.DataFrame
+    group_keys: Iterable[str]
+    time_key: str
+
+    def __post_init__(self):
+        self.group_keys = list(self.group_keys)
 
     @classmethod
     def from_excel(cls, path: str, group_keys: Iterable[str], time_key: str) -> "Trials":
@@ -34,21 +39,22 @@ class Trials:
         return Trials(self.frame[keep], self.group_keys, self.time_key)
 
 
+@dataclass
 class Analysis:
-    def __init__(self, profiler: Callable[[pd.DataFrame], dict]):
-        self.profiler = profiler
+    profiler: Callable[[pd.DataFrame], dict]
 
     def run(self, trials: Trials) -> pd.DataFrame:
         # summarize each group into one row, organized by key
         rows = {key: self.profiler(group.frame) for key, group in trials.groups()}
+        rows = {key: asdict(value) if is_dataclass(value) else value for key, value in rows.items()}
         summary = pd.DataFrame.from_dict(rows, orient="index")
         summary.index = pd.MultiIndex.from_tuples(summary.index, names=trials.group_keys)
         return summary
 
 
+@dataclass
 class Transform:
-    def __init__(self, builder: Callable[[pd.DataFrame], pd.DataFrame]):
-        self.builder = builder
+    builder: Callable[[pd.DataFrame], pd.DataFrame]
 
     def run(self, trials: Trials) -> pd.DataFrame:
         # extend existing trial column per group then return set
@@ -56,26 +62,21 @@ class Transform:
         return pd.concat(frames, keys=keys, names=trials.group_keys)
 
 
+@dataclass
 class Run:
-    def __init__(self, simulate: Callable[[object, pd.DataFrame], pd.Series]):
-        self.simulate = simulate
+    simulate: Callable[[type, pd.DataFrame], object]
 
-    def begin(self, policies: Callable[[], object], trials: Trials) -> dict[tuple, pd.Series]:
-        return {key: self.simulate(policies(), group.frame) for key, group in trials.groups()}
+    def begin(self, policies: type, trials: Trials) -> dict[tuple, object]:
+        return {key: self.simulate(policies, group.frame) for key, group in trials.groups()}
 
+@dataclass
 class Evaluate:
-    def __init__(self, metrics: dict[str, Callable[[pd.Series, pd.Series], float]]):
-        self.metrics = metrics
-
-    @staticmethod
-    def agreement(pred: pd.Series, obs: pd.Series) -> float:
-        # % of trials where predicted == observed data
-        return (pred == obs).mean()
+    stats: list[str]
 
     def compare(
         self,
-        predicted: dict[tuple, pd.Series],
-        observed: dict[tuple, pd.Series],
+        predicted: dict[tuple, object],
+        observed: dict[tuple, object],
         cohorts: pd.Series | None = None,
         group_keys: Iterable[str] | None = None,
     ) -> pd.DataFrame:
@@ -83,16 +84,54 @@ class Evaluate:
         for key, pred in predicted.items():
             obs = observed[key]
             row = dict(zip(group_keys, key)) if group_keys is not None else {"group": key}
-            for name, metric in self.metrics.items():
-                row[name] = metric(pred, obs)
+            for stat in self.stats:
+                row[f"{stat}_real"] = getattr(obs, stat)
+                row[f"{stat}_model"] = getattr(pred, stat)
+                row[f"{stat}_error"] = abs(getattr(pred, stat) - getattr(obs, stat))
             if cohorts is not None:
                 row["cohort"] = cohorts.loc[key]
             rows.append(row)
         return pd.DataFrame(rows)
 
+@dataclass
+class Agreement:
+    stats: list[str]
+
+    def test(self, matched: pd.DataFrame) -> pd.DataFrame:
+        rows = []
+        for cohort, group in matched.groupby("cohort"):
+            for stat in self.stats:
+                real = group[f"{stat}_real"].to_numpy(dtype=float)
+                model = group[f"{stat}_model"].to_numpy(dtype=float)
+                valid = ~np.isnan(real) & ~np.isnan(model)
+                real, model = real[valid], model[valid]
+                diff = model - real
+
+                bias = diff.mean() if len(diff) else np.nan
+                spread = diff.std(ddof=1) if len(diff) > 1 else np.nan
+                margin = 1.96 * spread
+                limit_lower, limit_upper = bias - margin, bias + margin
+
+                if len(diff) > 1 and np.any(diff != 0):
+                    wilcoxon_p = pg.wilcoxon(diff)["p_val"].iloc[0]
+                else:
+                    wilcoxon_p = np.nan
+
+                rows.append({
+                    "cohort": cohort, # strategy cluster
+                    "stat": stat, # statistic being measured (cramers v, and win-stay/lose-stay/counter rate) 
+                    "n": len(real), # valid dyads'
+                    "bias": bias, # averages of Model - Participant error, positive value overpredicts
+                    "limit_lower": limit_lower, # lower ~95% agreement bound for individual differences.
+                    "limit_upper": limit_upper, # upper ~95% agreement bound for individual differences.
+                    "wilcoxon_p": wilcoxon_p, # significance of the bias being non-zero
+                })
+        return pd.DataFrame(rows)
+
+
+@dataclass
 class Export:
-    def __init__(self, path: str):
-        self.path = path
+    path: str
 
     @staticmethod
     def _clean(frame: pd.DataFrame) -> pd.DataFrame:

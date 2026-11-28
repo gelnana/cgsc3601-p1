@@ -55,11 +55,23 @@
 
           python = pkgs."python${concatMajorMinor version}";
 
+          # R packages :(
           rEnv = pkgs.rWrapper.override {
             packages = with pkgs.rPackages; [
               ggplot2
+              ggpubr
+              cowplot
+              ggokabeito
               readxl
               dplyr
+              tidyr
+              purrr
+              ggdist
+              showtext
+              sysfonts
+              ragg
+              scales
+              curl
             ];
           };
         in
@@ -91,9 +103,6 @@
                 # are managed via `uv`/pyproject.toml, not nixpkgs.
                 pkgs.uv
 
-                # R has no equivalent to uv/pyproject.toml here, so its
-                # packages (ggplot2, readxl, dplyr) come straight from
-                # nixpkgs' rPackages set instead.
                 rEnv
 
                 # pkgs.black

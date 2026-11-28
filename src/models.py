@@ -1,76 +1,54 @@
-from rps import Move
-from actr import Agent
-
+from actr import Agent, DMReward, fresh_dm
 
 class Baseline(Agent):
-    def rock(vision='rock'):
-        pass
-
-    def paper(vision='paper'):
-        pass
-
-    def scissors(vision='scissors'):
-        pass
-
-    def no_response(vision='none'):
-        pass
-
+    def wildcard(goal='retrieving'):
+        self.move = self.random.choice([m for m in self.Move])
+        self.goal.set('waiting')
+        self.opponent.play(self.move)
 class WSLC(Agent):
-    def perceive(vision='?x', goal='waiting'):
-        self.vision.clear()
-        self.dm.request('move:? outcome:?')
-        self.goal.set('retrieving')
+    # biased toward win chunks
+    dm = fresh_dm()
+    DMReward(dm, win=0.2, lose=-0.2)
 
     def stay(goal='retrieving', retrieval='outcome:win'):
         self.goal.set('waiting')
         self.opponent.play(self.move)
 
     def shift(goal='retrieving', retrieval='outcome:!win'):
-        self.move = self.random.choice([m for m in type(self.move) if m != self.move])
+        self.move = self.random.choice([m for m in self.Move if m != self.move])
         self.goal.set('waiting')
         self.opponent.play(self.move)
-
-    def forget(goal='retrieving', retrieval=None):
-        self.move = self.random.choice(list(type(self.move)))
-        self.goal.set('waiting')
-        self.opponent.play(self.move)
-
-class WSLC_I(Agent):
-    def rock(vision='rock'):
-        pass
-
-    def paper(vision='paper'):
-        pass
-
-    def scissors(vision='scissors'):
-        pass
-
-    def no_response(vision='none'):
-        pass
-
-
-class WSLC_C(Agent):
-    def rock(vision='rock'):
-        pass
-
-    def paper(vision='paper'):
-        pass
-
-    def scissors(vision='scissors'):
-        pass
-
-    def no_response(vision='none'):
-        pass
 
 class WCLS(Agent):
-    def rock(vision='rock'):
-        pass
+    # biased towards loss chunks
+    dm = fresh_dm(associate_weight=0.0)
+    DMReward(dm, win=-0.2, lose=0.2)
 
-    def paper(vision='paper'):
-        pass
+    def stay(goal='retrieving', retrieval='outcome:!win'):
+        self.goal.set('waiting')
+        self.opponent.play(self.move)
 
-    def scissors(vision='scissors'):
-        pass
+    def shift(goal='retrieving', retrieval='outcome:win'):
+        self.move = self.random.choice([m for m in self.Move if m != self.move])
+        self.goal.set('waiting')
+        self.opponent.play(self.move)
 
-    def no_response(vision='none'):
-        pass
+class Mimicking(WSLC):
+    def transform(self, m):
+        return m
+
+    def mimic(goal='retrieving', retrieval='opponent:?opp'):
+        self.move = self.transform(self.Move[opp])
+        self.goal.set('waiting')
+        self.opponent.play(self.move)
+
+class WSLC_I(Mimicking):
+    dm = fresh_dm(associate_weight=2.0)
+    DMReward(dm, win=-0.1, lose=0.1)
+
+class WSLC_C(Mimicking):
+    dm = fresh_dm(associate_weight=0.0)
+    DMReward(dm, win=-0.2, lose=0.2)
+
+    def transform(self, m):
+        return m.counter

@@ -8,4 +8,5 @@ dependencies = [
     "openpyxl",
     "scikit-learn>=1.9.1",
     "scipy>=1.18.1",
+    "pingouin>=0.7.0",
 ]
